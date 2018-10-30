@@ -10,14 +10,19 @@
 
 #include <algorithm>
 #include <cctype>
-#include <chrono>
 #include <fstream>
 #include <functional>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
-#include <stdexcept>
 #include <utility>
+
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <pthread.h>
+#include <sys/time.h>
+#endif
 
 namespace sensors_analytics {
 namespace utils {
@@ -69,21 +74,24 @@ void ObjectNode::Clear() {
 void ObjectNode::DumpNode(const ObjectNode& node, string* buffer) {
   *buffer += '{';
   bool first = true;
-  for (const auto& iter : node.properties_map_) {
+
+  for (std::map<string, ValueNode>::const_iterator iterator = node.properties_map_.begin();
+       iterator != node.properties_map_.end(); ++iterator) {
     if (first) {
       first = false;
     } else {
       *buffer += ',';
     }
-    *buffer += '"' + iter.first + "\":";
-    ValueNode::ToStr(iter.second, buffer);
+    *buffer += '"' + iterator->first + "\":";
+    ValueNode::ToStr(iterator->second, buffer);
   }
   *buffer += '}';
 }
 
 void ObjectNode::ValueNode::DumpString(const string& value, string* buffer) {
   *buffer += '"';
-  for (char c : value) {
+  for (std::string::size_type i = 0; i < value.length(); ++i) {
+    char c = value[i];
     switch (c) {
       case '"':
         *buffer += "\\\"";
@@ -117,13 +125,13 @@ void ObjectNode::ValueNode::DumpString(const string& value, string* buffer) {
 void ObjectNode::ValueNode::DumpList(const std::vector<string>& value, string* buffer) {
   *buffer += '[';
   bool first = true;
-  for (const auto& iter : value) {
+  for (std::vector<string>::const_iterator iterator = value.begin(); iterator != value.end(); ++iterator) {
     if (first) {
       first = false;
     } else {
       *buffer += ',';
     }
-    DumpString(iter, buffer);
+    DumpString(*iterator, buffer);
   }
   *buffer += ']';
 }
@@ -134,6 +142,7 @@ void ObjectNode::ValueNode::DumpList(const std::vector<string>& value, string* b
 #define SA_SDK_LOCALTIME(seconds, now) localtime_r((seconds), (now))
 #elif defined(_WIN32)
 #define SA_SDK_LOCALTIME(seconds, now) localtime_s((now), (seconds))
+#define snprintf sprintf_s
 #endif
 
 void ObjectNode::ValueNode::DumpDateTime(const time_t& seconds, int milliseconds, string* buffer) {
@@ -158,10 +167,13 @@ string ObjectNode::ToJson(const ObjectNode& node) {
 }
 
 void ObjectNode::MergeFrom(const utils::ObjectNode& another_node) {
-  for (const auto& iter : another_node.properties_map_) {
-    properties_map_[iter.first] = iter.second;
+  for (std::map<string, ValueNode>::const_iterator iterator = another_node.properties_map_.begin();
+       iterator != another_node.properties_map_.end(); ++iterator) {
+    properties_map_[iterator->first] = iterator->second;
   }
 }
+
+ObjectNode::ObjectNode() {}
 
 utils::ObjectNode::ValueNode::ValueNode(double value) : node_type_(NUMBER) {
   value_.number_value = value;
@@ -193,10 +205,10 @@ utils::ObjectNode::ValueNode::ValueNode(time_t seconds, int milliseconds) : node
 void utils::ObjectNode::ValueNode::ToStr(const utils::ObjectNode::ValueNode& node, string* buffer) {
   switch (node.node_type_) {
     case NUMBER:
-      *buffer += std::to_string(node.value_.number_value);
+      DumpNumber(node.value_.number_value, buffer);
       break;
     case INT:
-      *buffer += std::to_string(node.value_.int_value);
+      DumpNumber(node.value_.int_value, buffer);
       break;
     case STRING:
       DumpString(node.string_data_, buffer);
@@ -219,12 +231,24 @@ void utils::ObjectNode::ValueNode::ToStr(const utils::ObjectNode::ValueNode& nod
   }
 }
 
+void ObjectNode::ValueNode::DumpNumber(double value, string* buffer) {
+  std::ostringstream buf;
+  buf << value;
+  *buffer += buf.str();
+}
+
+void ObjectNode::ValueNode::DumpNumber(int64_t value, string* buffer) {
+  std::ostringstream buf;
+  buf << value;
+  *buffer += buf.str();
+}
+
 namespace rest_client {
 
 typedef std::map<std::string, std::string> HeaderFields;
 
 typedef struct {
-  int code_{};
+  int code_;
   std::string body_;
   HeaderFields headers_;
 } Response;
@@ -243,13 +267,18 @@ class Connection {
   } RequestInfo;
 
   explicit Connection(const std::string& base_url);
+
   ~Connection();
+
   void SetTimeout(int seconds);
+
   void AppendHeader(const std::string& key, const std::string& value);
+
   Response Post(const std::string& url, const std::string& data);
 
  private:
   Response PerformCurlRequest(const std::string& uri);
+
   CURL* curl_handle_;
   std::string base_url_;
   HeaderFields header_fields_;
@@ -269,6 +298,7 @@ Response Post(const std::string& url,
 
 namespace helpers {
 size_t WriteCallback(void* data, size_t size, size_t nmemb, void* user_data);
+
 size_t HeaderCallback(void* data, size_t size, size_t nmemb, void* user_data);
 
 inline std::string& TrimLeft(std::string& s);  // NOLINT
@@ -277,7 +307,7 @@ inline std::string& Trim(std::string& s);  // NOLINT
 }  // namespace helpers
 
 Connection::Connection(const std::string& base_url)
-    : last_request_(), header_fields_() {
+  : last_request_(), header_fields_() {
   this->curl_handle_ = curl_easy_init();
   if (!this->curl_handle_) {
     throw std::runtime_error("Couldn't initialize curl handle");
@@ -323,7 +353,7 @@ Response Connection::PerformCurlRequest(const std::string& uri) {
   std::string url = std::string(this->base_url_ + uri);
   std::string header_string;
   CURLcode res;
-  curl_slist* header_list = nullptr;
+  curl_slist* header_list = NULL;
 
   /** set query URL */
   curl_easy_setopt(this->curl_handle_, CURLOPT_URL, url.c_str());
@@ -351,6 +381,13 @@ Response Connection::PerformCurlRequest(const std::string& uri) {
   curl_easy_setopt(this->curl_handle_, CURLOPT_USERAGENT,
                    SA_SDK_FULL_NAME);
 
+  // 若使用 HTTPS，有两种配置方式，选用其中一种即可：
+  // 1. 使用 CA 证书（下载地址 http://curl.haxx.se/ca/cacert.pem ），去掉下面一行的注释，并指定证书路径，例如证书在当前目录下
+  // curl_easy_setopt(this->curl_handle_, CURLOPT_CAINFO, "cacert.pem");
+  // 2. （不建议，仅测试时方便可以使用）不验证服务端证书，去掉下面两行的注释
+  // curl_easy_setopt(this->curl_handle_, CURLOPT_SSL_VERIFYHOST, 0L);
+  // curl_easy_setopt(this->curl_handle_, CURLOPT_SSL_VERIFYPEER, 0L);
+
   // set timeout
   if (this->timeout_) {
     curl_easy_setopt(this->curl_handle_, CURLOPT_TIMEOUT, this->timeout_);
@@ -371,19 +408,8 @@ Response Connection::PerformCurlRequest(const std::string& uri) {
 
   res = curl_easy_perform(this->curl_handle_);
   if (res != CURLE_OK) {
-    switch (res) {
-      case CURLE_OPERATION_TIMEDOUT:
-        ret.code_ = res;
-        ret.body_ = "Operation Timeout.";
-        break;
-      case CURLE_SSL_CERTPROBLEM:
-        ret.code_ = res;
-        ret.body_ = curl_easy_strerror(res);
-        break;
-      default:
-        ret.body_ = "Failed to query.";
-        ret.code_ = -1;
-    }
+    ret.body_ = curl_easy_strerror(res);
+    ret.code_ = -1;
   } else {
     int64_t http_code = 0;
     curl_easy_getinfo(this->curl_handle_, CURLINFO_RESPONSE_CODE, &http_code);
@@ -483,9 +509,9 @@ Response Post(const std::string& url,
               int timeout_second,
               const std::vector<std::pair<string, string> >& headers) {
   Response ret;
-  std::unique_ptr<Connection> conn;
+  Connection* conn;
   try {
-    conn.reset(new Connection(""));
+    conn = new Connection("");
   } catch (std::runtime_error& e) {
     std::cerr << e.what() << std::endl;
     Response response;
@@ -498,10 +524,12 @@ Response Post(const std::string& url,
   if (ctype.length() > 0) {
     conn->AppendHeader("Content-Type", ctype);
   }
-  for (const auto& header : headers) {
-    conn->AppendHeader(header.first, header.second);
+  for (std::vector<std::pair<string, string> >::const_iterator iterator = headers.begin();
+       iterator != headers.end(); ++iterator) {
+    conn->AppendHeader(iterator->first, iterator->second);
   }
   ret = conn->Post(url, data);
+  delete conn;
   return ret;
 }
 }  // namespace rest_client
@@ -517,8 +545,11 @@ class HttpSender {
 
  private:
   static bool CompressString(const string& str, string* out_string, int compression_level);
+
   static bool EncodeToRequestBody(const string& data, string* request_body);
+
   static string Base64Encode(const string& data);
+
   static string UrlEncode(const string& data);
 
   friend class Sdk;
@@ -527,8 +558,8 @@ class HttpSender {
   std::vector<std::pair<string, std::string> > http_headers_;
 };
 
-HttpSender::HttpSender(const string& server_url, const std::vector<std::pair<string, string>>& http_headers) :
-    server_url_(server_url), http_headers_(http_headers) {}
+HttpSender::HttpSender(const string& server_url, const std::vector<std::pair<string, string> >& http_headers) :
+  server_url_(server_url), http_headers_(http_headers) {}
 
 bool HttpSender::Send(const string& data) {
   string request_body;
@@ -536,8 +567,12 @@ bool HttpSender::Send(const string& data) {
     return false;
   }
   utils::rest_client::Response
-      response = utils::rest_client::Post(server_url_, "", request_body, kRequestTimeoutSecond);
-  return response.code_ == 200;
+    response = utils::rest_client::Post(server_url_, "", request_body, kRequestTimeoutSecond);
+  if (response.code_ != 200) {
+    std::cerr << "SensorsAnalytics SDK send failed: " << response.body_ << std::endl;
+    return false;
+  }
+  return true;
 }
 
 bool HttpSender::CompressString(const string& str, string* out_string, int compression_level = Z_BEST_COMPRESSION) {
@@ -579,11 +614,11 @@ bool HttpSender::CompressString(const string& str, string* out_string, int compr
   return true;
 }
 
-constexpr char kBase64Chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static const char kBase64Chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 std::string HttpSender::Base64Encode(const string& data) {
-  auto const* bytes_to_encode = reinterpret_cast<const unsigned char*>(data.data());
-  auto in_len = data.length();
+  const unsigned char* bytes_to_encode = reinterpret_cast<const unsigned char*>(data.data());
+  size_t in_len = data.length();
   std::string ret;
   int i = 0;
   int j = 0;
@@ -624,7 +659,8 @@ string HttpSender::UrlEncode(const string& data) {
   escaped.fill('0');
   escaped << std::hex;
 
-  for (char c : data) {
+  for (std::string::size_type i = 0; i < data.size(); ++i) {
+    char c = data[i];
     // Keep alphanumeric and other accepted characters intact
     if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
       escaped << c;
@@ -656,6 +692,8 @@ class DefaultConsumer {
  public:
   DefaultConsumer(const string& server_url, const string& data_file_path, int max_staging_record_count);
 
+  void Init();
+
   void Send(const utils::ObjectNode& record);
 
   // 触发一次发送
@@ -686,28 +724,63 @@ class DefaultConsumer {
   void Close();
 
   static const size_t kFlushAllBatchSize = 30;
-  std::recursive_mutex records_mutex_;  // 操作 records_
-  std::recursive_mutex sending_mutex_;  // 发送 FlushPart()
+
+#if defined(_WIN32)
+#define SA_MUTEX CRITICAL_SECTION
+#define SA_MUTEX_LOCK(mutex) EnterCriticalSection((mutex))
+#define SA_MUTEX_UNLOCK(mutex) LeaveCriticalSection((mutex))
+#define SA_MUTEX_INIT(mutex) InitializeCriticalSection((mutex))
+#define SA_MUTEX_DESTROY(mutex) DeleteCriticalSection((mutex))
+#else
+#define SA_MUTEX pthread_mutex_t
+#define SA_MUTEX_LOCK(mutex) pthread_mutex_lock((mutex))
+#define SA_MUTEX_UNLOCK(mutex) pthread_mutex_unlock((mutex))
+#define SA_MUTEX_INIT(mutex) \
+do { \
+  pthread_mutexattr_t mutex_attr; \
+  pthread_mutexattr_init(&mutex_attr); \
+  pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_RECURSIVE); \
+  pthread_mutex_init((mutex), &mutex_attr); \
+} while(0)
+#define SA_MUTEX_DESTROY(mutex) pthread_mutex_destroy((mutex))
+#endif
+
+  SA_MUTEX records_mutex_; // 操作 records_
+  SA_MUTEX sending_mutex_; // 发送 FlushPart()
+
+  class LockGuard {
+   public:
+    LockGuard(SA_MUTEX* mutex) : mutex_(mutex) {
+      SA_MUTEX_LOCK(mutex_);
+    }
+
+    ~LockGuard() {
+      SA_MUTEX_UNLOCK(mutex_);
+    }
+
+   private:
+    SA_MUTEX* mutex_;
+  };
 
   std::deque<string> records_;
   string data_file_path_;
   int max_staging_record_count_;
   bool need_try_load_from_disk_;
-  std::unique_ptr<HttpSender> sender_;
+  HttpSender* sender_;
 };
 
 DefaultConsumer::DefaultConsumer(const string& server_url, const string& data_file_path, int max_staging_record_count)
-    : data_file_path_(data_file_path),
-      max_staging_record_count_(max_staging_record_count),
-      need_try_load_from_disk_(true),
-      sender_(new HttpSender(server_url)) {}
+  : data_file_path_(data_file_path),
+    max_staging_record_count_(max_staging_record_count),
+    need_try_load_from_disk_(true),
+    sender_(new HttpSender(server_url)) {}
 
 void DefaultConsumer::Send(const utils::ObjectNode& record) {
   const string json_record = utils::ObjectNode::ToJson(record);
 
-  std::lock_guard<std::recursive_mutex> lock(records_mutex_);
-  records_.emplace_back(json_record);
-  if (records_.size() > max_staging_record_count_) {
+  LockGuard records_lock(&records_mutex_);
+  records_.push_back(json_record);
+  if (records_.size() > (size_t) max_staging_record_count_) {
     records_.pop_front();
   }
 }
@@ -716,23 +789,23 @@ bool DefaultConsumer::FlushPart(size_t part_size, bool drop_failed_record) {
   // 从本地文件读出之前 dump 到磁盘的数据，补满发送队列
   LoadRecordFromDisk();
 
-  std::lock_guard<std::recursive_mutex> sending_lock(sending_mutex_);
+  LockGuard sending_lock(&sending_mutex_);
   std::vector<string> sending_records;
   size_t flush_size;
   {
-    std::lock_guard<std::recursive_mutex> records_lock(records_mutex_);
+    LockGuard records_lock(&records_mutex_);
     flush_size = part_size < records_.size() ? part_size : records_.size();
     if (flush_size == 0) {
       return true;
     }
-    auto iter_end = records_.begin() + flush_size;
+    std::deque<string>::iterator iter_end = records_.begin() + flush_size;
     sending_records.assign(records_.begin(), iter_end);
     records_.erase(records_.begin(), iter_end);
   }
 
   std::stringstream buffer;
   buffer << '[';
-  for (auto iter = sending_records.begin(); iter != sending_records.end(); ++iter) {
+  for (std::vector<string>::const_iterator iter = sending_records.begin(); iter != sending_records.end(); ++iter) {
     if (iter != sending_records.begin()) {
       buffer << ',';
     }
@@ -744,13 +817,13 @@ bool DefaultConsumer::FlushPart(size_t part_size, bool drop_failed_record) {
   if (!send_result && !drop_failed_record) {
     // 如果发送失败并且发送失败的不能丢，那么放回发送队列
     {
-      std::lock_guard<std::recursive_mutex> records_lock(records_mutex_);
+      LockGuard records_lock(&records_mutex_);
       size_t records_remain_size = max_staging_record_count_ - records_.size();
       if (records_remain_size > 0) {
         // 需要从最前面补满 records_，从 sending_records 的 begin_idx 元素到最后一个元素
         size_t begin_idx = sending_records.size() > records_remain_size ?
                            sending_records.size() - records_remain_size : 0;
-        auto copy_sending_begin = sending_records.begin() + begin_idx;
+        std::vector<string>::iterator copy_sending_begin = sending_records.begin() + begin_idx;
         records_.insert(records_.begin(), copy_sending_begin, sending_records.end());
       }
     }
@@ -762,7 +835,7 @@ bool DefaultConsumer::Flush() {
   LoadRecordFromDisk();
   while (true) {
     {
-      std::lock_guard<std::recursive_mutex> lock(records_mutex_);
+      LockGuard records_lock(&records_mutex_);
       if (records_.empty()) {
         break;
       }
@@ -777,7 +850,7 @@ bool DefaultConsumer::Flush() {
 }
 
 void DefaultConsumer::Clear() {
-  std::lock_guard<std::recursive_mutex> lock(records_mutex_);
+  LockGuard records_lock(&records_mutex_);
   records_.clear();
   TruncateStagingFile();
 }
@@ -787,12 +860,12 @@ DefaultConsumer::~DefaultConsumer() {
 }
 
 inline void DefaultConsumer::TruncateStagingFile() {
-  std::ofstream staging_ofs(data_file_path_, std::ofstream::out | std::ofstream::trunc);
+  std::ofstream staging_ofs(data_file_path_.c_str(), std::ofstream::out | std::ofstream::trunc);
   staging_ofs.close();
 }
 
 void DefaultConsumer::LoadRecordFromDisk() {
-  std::lock_guard<std::recursive_mutex> lock(records_mutex_);
+  LockGuard records_lock(&records_mutex_);
   if (!need_try_load_from_disk_) {
     return;
   }
@@ -800,10 +873,10 @@ void DefaultConsumer::LoadRecordFromDisk() {
   if (memory_remain_size > 0) {
     // 读文件里最后 memory_remain_size 条数据
     std::deque<string> record_buffer;
-    std::ifstream staging_ifs(data_file_path_, std::ofstream::in);
+    std::ifstream staging_ifs(data_file_path_.c_str(), std::ofstream::in);
     string line;
     while (staging_ifs >> line) {
-      record_buffer.emplace_back(line);
+      record_buffer.push_back(line);
       if (record_buffer.size() > memory_remain_size) {
         record_buffer.pop_front();
       }
@@ -818,20 +891,31 @@ void DefaultConsumer::LoadRecordFromDisk() {
 }
 
 inline void DefaultConsumer::DumpRecordToDisk() {
-  std::ofstream staging_ofs(data_file_path_, std::ofstream::out | std::ofstream::trunc);
-  for (const auto& record : records_) {
-    staging_ofs << record << std::endl;
+  std::ofstream staging_ofs(data_file_path_.c_str(), std::ofstream::out | std::ofstream::trunc);
+  for (std::deque<string>::const_iterator iterator = records_.begin(); iterator != records_.end(); ++iterator) {
+    staging_ofs << *iterator << std::endl;
   }
   staging_ofs.close();
 }
 
-void DefaultConsumer::Close() {
-  std::lock_guard<std::recursive_mutex> lock(records_mutex_);
-  LoadRecordFromDisk();
-  DumpRecordToDisk();
+void DefaultConsumer::Init() {
+  SA_MUTEX_INIT(&records_mutex_);
+  SA_MUTEX_INIT(&sending_mutex_);
 }
 
-std::unique_ptr<Sdk> Sdk::instance_(nullptr);
+void DefaultConsumer::Close() {
+  LockGuard records_lock(&records_mutex_);
+  LoadRecordFromDisk();
+  DumpRecordToDisk();
+  if (sender_ != NULL) {
+    delete sender_;
+    sender_ = NULL;
+  }
+  SA_MUTEX_DESTROY(&sending_mutex_);
+  SA_MUTEX_DESTROY(&records_mutex_);
+}
+
+Sdk* Sdk::instance_ = NULL;
 
 /// class Sdk
 #define RETURN_IF_ERROR(stmt) do { if (!stmt) return false; } while (false)
@@ -843,7 +927,8 @@ bool Sdk::Init(const std::string& data_file_path,
                int max_staging_record_count) {
   RETURN_IF_ERROR(AssertId("Distinct ID", distinct_id));
   if (!instance_) {
-    instance_.reset(new Sdk(server_url, data_file_path, max_staging_record_count, distinct_id, is_login_id));
+    instance_ = new Sdk(server_url, data_file_path, max_staging_record_count, distinct_id, is_login_id);
+    instance_->consumer_->Init();
   }
   return true;
 }
@@ -878,19 +963,33 @@ bool Sdk::AddEvent(const string& action_type,
   }
   record_properties.MergeFrom(properties);
 
-  int64_t time;
-  auto time_property_iter = record_properties.properties_map_.find("$time");
+  int64_t current_timestamp;
+  std::map<string, utils::ObjectNode::ValueNode>::iterator time_property_iter =
+    record_properties.properties_map_.find("$time");
   if (time_property_iter != record_properties.properties_map_.end()) {
-    time = 1000L * time_property_iter->second.value_.date_time_value.seconds +
-        time_property_iter->second.value_.date_time_value.milliseconds;
+    current_timestamp = 1000L * time_property_iter->second.value_.date_time_value.seconds +
+                        time_property_iter->second.value_.date_time_value.milliseconds;
     record_properties.properties_map_.erase(time_property_iter);
   } else {
-    time = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
+#if defined(_WIN32)
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    const int64_t kUnixTimeStart = 0x019DB1DED53E8000L; //January 1, 1970 (start of Unix epoch) in "ticks"
+    const int64_t kTicksPerMillisecond = 10000;
+    LARGE_INTEGER li;
+    li.LowPart  = ft.dwLowDateTime;
+    li.HighPart = ft.dwHighDateTime;
+    current_timestamp = (li.QuadPart - kUnixTimeStart) / kTicksPerMillisecond;
+#else
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    current_timestamp = (long) now.tv_sec * 1000 + (long) (now.tv_usec / 1000);
+#endif
   }
 
   string project;
-  auto project_property_iter = record_properties.properties_map_.find("$project");
+  std::map<string, utils::ObjectNode::ValueNode>::iterator project_property_iter =
+    record_properties.properties_map_.find("$project");
   if (project_property_iter != record_properties.properties_map_.end()) {
     project = project_property_iter->second.string_data_;
     record_properties.properties_map_.erase(project_property_iter);
@@ -908,7 +1007,7 @@ bool Sdk::AddEvent(const string& action_type,
 
   utils::ObjectNode record_node;
   record_node.SetString("type", action_type);
-  record_node.SetNumber("time", time);
+  record_node.SetNumber("time", current_timestamp);
   record_node.SetString("distinct_id", distinct_id);
   record_node.SetObject("properties", record_properties);
   record_node.SetObject("lib", lib_node);
@@ -924,7 +1023,6 @@ bool Sdk::AddEvent(const string& action_type,
     record_node.SetString("original_id", original_id);
   }
 
-  record_node.SetNumber("_track_id", static_cast<int32_t>(random_device_()));
   consumer_->Send(record_node);
   return true;
 }
@@ -949,7 +1047,7 @@ bool Sdk::AssertKey(const string& type, const string& key) {
   char ch = key[0];
   if ((ch >= 'a' && ch <= 'z') || ch == '$' ||
       (ch >= 'A' && ch <= 'Z') || ch == '_') {
-    for (int i = 1; i < len; ++i) {
+    for (size_t i = 1; i < len; ++i) {
       ch = key[i];
       if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
           (ch >= 'A' && ch <= 'Z') || ch == '$' || ch == '_') {
@@ -966,7 +1064,8 @@ bool Sdk::AssertKey(const string& type, const string& key) {
 }
 
 bool Sdk::AssertProperties(const utils::ObjectNode& properties) {
-  for (auto iter = properties.properties_map_.begin(); iter != properties.properties_map_.end(); ++iter) {
+  for (std::map<string, utils::ObjectNode::ValueNode>::const_iterator iter = properties.properties_map_.begin();
+       iter != properties.properties_map_.end(); ++iter) {
     RETURN_IF_ERROR(AssertKey("Property Key", iter->first));
 
     if ("$time" == iter->first &&
@@ -974,7 +1073,7 @@ bool Sdk::AssertProperties(const utils::ObjectNode& properties) {
       std::cerr << "The property '$time' should be DateTime type.";
       return false;
     } else if ("$project" == iter->first &&
-        iter->second.node_type_ != utils::ObjectNode::STRING) {
+               iter->second.node_type_ != utils::ObjectNode::STRING) {
       std::cerr << "The property '$project' should be String type.";
       return false;
     }
@@ -983,7 +1082,10 @@ bool Sdk::AssertProperties(const utils::ObjectNode& properties) {
 }
 
 void Sdk::Shutdown() {
-  instance_.reset();
+  if (instance_ != NULL) {
+    delete instance_;
+    instance_ = NULL;
+  }
 }
 
 bool Sdk::Flush() {
@@ -1132,7 +1234,9 @@ void Sdk::ProfileAppend(const PropertiesNode& properties) {
 void Sdk::ProfileAppend(const string& property_name, const string& str_value) {
   if (instance_) {
     PropertiesNode properties_node;
-    properties_node.SetList(property_name, {str_value});
+    std::vector<string> str_vector;
+    str_vector.push_back(str_value);
+    properties_node.SetList(property_name, str_vector);
     instance_->AddEvent("profile_append", "", properties_node, instance_->distinct_id_, "");
   }
 }
@@ -1156,11 +1260,22 @@ Sdk::Sdk(const string& server_url,
          int max_staging_record_count,
          const string& distinct_id,
          bool is_login_id)
-    : consumer_(new DefaultConsumer(server_url, data_file_path, max_staging_record_count)),
-      distinct_id_(distinct_id),
-      is_login_id_(is_login_id),
-      super_properties_(new PropertiesNode) {
+  : consumer_(new DefaultConsumer(server_url, data_file_path, max_staging_record_count)),
+    distinct_id_(distinct_id),
+    is_login_id_(is_login_id),
+    super_properties_(new PropertiesNode) {
   ResetSuperProperties();
+}
+
+Sdk::~Sdk() {
+  if (consumer_ != NULL) {
+    delete consumer_;
+    consumer_ = NULL;
+  }
+  if (super_properties_ != NULL) {
+    delete super_properties_;
+    super_properties_ = NULL;
+  }
 }
 
 }  // namespace sensors_analytics

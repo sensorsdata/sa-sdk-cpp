@@ -3,7 +3,7 @@
 //
 
 #include <string>
-#include <random>
+#include <cstdlib>
 #include <iostream>
 #include "sensors_analytics_sdk.h"
 
@@ -43,6 +43,16 @@ int main() {
   // 记录一个行为事件
   sensors_analytics::PropertiesNode event_properties;
   event_properties.SetString("computer_name", "ABCXYZ");
+  event_properties.SetNumber("test_number_int", 3);
+  event_properties.SetNumber("test_number_double", 3.14);
+  event_properties.SetBool("test_bool", true);
+  std::string test_string = "test_str";
+  event_properties.SetString("test_stl_string", test_string);
+  event_properties.SetDateTime("test_time", time(NULL), 0);
+  std::vector<std::string> test_list;
+  test_list.push_back("item1");
+  test_list.push_back("item2");
+  event_properties.SetList("test_list", test_list);
   sensors_analytics::Sdk::Track("OpenApp", event_properties);
 
   // 当可以获取到用户的 “登录 ID” 时，使用登录接口设置 “登录 ID”
@@ -53,7 +63,7 @@ int main() {
   sensors_analytics::Sdk::ProfileSetNumber("Age", 26);
 
   // 为数组类型的用户属性追加值
-  sensors_analytics::Sdk::ProfileAppend("hobby", "电影");
+  sensors_analytics::Sdk::ProfileAppend("hobby", "movie");
 
   // 上面所有埋点都没有真正发送到服务端，当有网络的时候，请调用 Flush 手工触发发送
   // 注意：仅当调用 Flush 函数才会触发网络发送
@@ -64,22 +74,27 @@ int main() {
 
   // 进程结束前没有 Flush 的数据将保存到 staging_file
   sensors_analytics::Sdk::Track("BuyTicket");
+  sensors_analytics::Sdk::Shutdown();
   return 0;
 }
+
+#if defined(_WIN32)
+#define snprintf sprintf_s
+#endif
 
 // 随机生成一个 ID
 std::string GenerateId() {
   char str_uuid[80];
-  std::random_device rd;
+  srand(time(NULL));
   snprintf(str_uuid, sizeof(str_uuid),
            "%x%x-%x-%x-%x-%x%x%x",
-           rd(),
-           rd(),
-           rd(),
-           ((rd() & 0x0fff) | 0x4000),
-           rd() % 0x3fff + 0x8000,
-           rd(),
-           rd(),
-           rd());
+           rand(),
+           rand(),
+           rand(),
+           ((rand() & 0x0fff) | 0x4000),
+           rand() % 0x3fff + 0x8000,
+           rand(),
+           rand(),
+           rand());
   return str_uuid;
 }

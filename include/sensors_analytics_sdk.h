@@ -12,15 +12,24 @@
 #include <deque>
 #include <map>
 #include <memory>
-#include <mutex>
-#include <random>
 #include <string>
 #include <utility>
 #include <vector>
 
-#define SA_SDK_VERSION "0.1"
+#define SA_SDK_VERSION "0.2"
 #define SA_SDK_NAME "SensorsAnalytics CPP SDK"
 #define SA_SDK_FULL_NAME SA_SDK_NAME " " SA_SDK_VERSION
+
+#ifdef _MSC_VER
+#if _MSC_VER >= 1600
+#include <cstdint>
+#else
+typedef __int32 int32_t;
+typedef __int64 int64_t;
+#endif
+#elif __GNUC__ >= 3
+#include <cstdint>
+#endif
 
 namespace sensors_analytics {
 
@@ -99,10 +108,7 @@ class Sdk {
   static void ProfileAppend(const PropertiesNode& properties);
   static void ProfileAppend(const string& property_name, const string& str_value);
 
-  ~Sdk() = default;
-
-  Sdk(const Sdk&) = delete;
-  Sdk& operator=(const Sdk&) = delete;
+  ~Sdk();
 
  private:
   Sdk(const string& server_url,
@@ -110,6 +116,9 @@ class Sdk {
       int max_staging_record_count,
       const string& distinct_id,
       bool is_login_id);
+
+  Sdk(const Sdk&);
+  Sdk& operator=(const Sdk&);
 
   bool AddEvent(const string& action_type,
                 const string& event_name,
@@ -123,13 +132,11 @@ class Sdk {
   static bool AssertKey(const string& type, const string& key);
   static bool AssertId(const string& type, const string& key);
 
-  static std::unique_ptr<Sdk> instance_;
-  std::unique_ptr<PropertiesNode> super_properties_;
+  static Sdk* instance_;
+  PropertiesNode* super_properties_;
   string distinct_id_;
   bool is_login_id_;
-  std::unique_ptr<DefaultConsumer> consumer_;
-
-  std::random_device random_device_;
+  DefaultConsumer* consumer_;
 };
 
 namespace utils {
@@ -153,14 +160,12 @@ class ObjectNode {
   static string ToJson(const ObjectNode& node);
 
  protected:
-  ObjectNode() = default;
+  ObjectNode();
 
   class ValueNode;
   std::map<string, ValueNode> properties_map_;
 
  private:
-  ObjectNode(const ObjectNode& node) = default;
-
   static void DumpNode(const ObjectNode& node, string* buffer);
   void MergeFrom(const ObjectNode& another_node);
 
@@ -182,8 +187,6 @@ class ObjectNode::ValueNode {
  public:
   ValueNode() : node_type_(UNKNOWN) {}
 
-  ValueNode(const ValueNode& valueNode) = default;
-
   explicit ValueNode(double value);
   explicit ValueNode(int64_t value);
   explicit ValueNode(const string& value);
@@ -198,13 +201,15 @@ class ObjectNode::ValueNode {
   static void DumpString(const string& value, string* buffer);
   static void DumpList(const std::vector<string>& value, string* buffer);
   static void DumpDateTime(const time_t& seconds, int milliseconds, string* buffer);
+  static void DumpNumber(double value, string* buffer);
+  static void DumpNumber(int64_t value, string* buffer);
 
   friend class ::sensors_analytics::Sdk;
 
   ValueNodeType node_type_;
 
   union UnionValue {
-    double number_value{};
+    double number_value;
     bool bool_value;
     struct {
       std::time_t seconds;
@@ -223,7 +228,7 @@ class ObjectNode::ValueNode {
 class PropertiesNode : public utils::ObjectNode {
  private:
   friend class Sdk;
-  void SetObject(const string& property_name, const ObjectNode& value) override;
+  void SetObject(const string& property_name, const ObjectNode& value);
 };
 
 }  // namespace sensors_analytics
