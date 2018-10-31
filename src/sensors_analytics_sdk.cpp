@@ -351,6 +351,13 @@ Response Connection::PerformCurlRequest(const std::string& uri) {
   curl_easy_setopt(this->curl_handle_, CURLOPT_USERAGENT,
                    SA_SDK_FULL_NAME);
 
+  // 若使用 HTTPS，有两种配置方式，选用其中一种即可：
+  // 1. 使用 CA 证书（下载地址 http://curl.haxx.se/ca/cacert.pem ），去掉下面一行的注释，并指定证书路径，例如证书在当前目录下
+  // curl_easy_setopt(this->curl_handle_, CURLOPT_CAINFO, "cacert.pem");
+  // 2. （不建议，仅测试时方便可以使用）不验证服务端证书，去掉下面两行的注释
+  // curl_easy_setopt(this->curl_handle_, CURLOPT_SSL_VERIFYHOST, 0L);
+  // curl_easy_setopt(this->curl_handle_, CURLOPT_SSL_VERIFYPEER, 0L);
+
   // set timeout
   if (this->timeout_) {
     curl_easy_setopt(this->curl_handle_, CURLOPT_TIMEOUT, this->timeout_);
@@ -371,19 +378,8 @@ Response Connection::PerformCurlRequest(const std::string& uri) {
 
   res = curl_easy_perform(this->curl_handle_);
   if (res != CURLE_OK) {
-    switch (res) {
-      case CURLE_OPERATION_TIMEDOUT:
-        ret.code_ = res;
-        ret.body_ = "Operation Timeout.";
-        break;
-      case CURLE_SSL_CERTPROBLEM:
-        ret.code_ = res;
-        ret.body_ = curl_easy_strerror(res);
-        break;
-      default:
-        ret.body_ = "Failed to query.";
-        ret.code_ = -1;
-    }
+    ret.body_ = curl_easy_strerror(res);
+    ret.code_ = -1;
   } else {
     int64_t http_code = 0;
     curl_easy_getinfo(this->curl_handle_, CURLINFO_RESPONSE_CODE, &http_code);
@@ -537,7 +533,11 @@ bool HttpSender::Send(const string& data) {
   }
   utils::rest_client::Response
       response = utils::rest_client::Post(server_url_, "", request_body, kRequestTimeoutSecond);
-  return response.code_ == 200;
+  if (response.code_ != 200) {
+    std::cerr << "SensorsAnalytics SDK send failed: " << response.body_ << std::endl;
+    return false;
+  }
+  return true;
 }
 
 bool HttpSender::CompressString(const string& str, string* out_string, int compression_level = Z_BEST_COMPRESSION) {

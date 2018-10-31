@@ -43,6 +43,16 @@ int main() {
   // 记录一个行为事件
   sensors_analytics::PropertiesNode event_properties;
   event_properties.SetString("computer_name", "ABCXYZ");
+  event_properties.SetNumber("test_number_int", 3);
+  event_properties.SetNumber("test_number_double", 3.14);
+  event_properties.SetBool("test_bool", true);
+  std::string test_string = "test_str";
+  event_properties.SetString("test_stl_string", test_string);
+  event_properties.SetDateTime("test_time", time(nullptr), 0);
+  std::vector<std::string> test_list;
+  test_list.emplace_back("item1");
+  test_list.emplace_back("item2");
+  event_properties.SetList("test_list", test_list);
   sensors_analytics::Sdk::Track("OpenApp", event_properties);
 
   // 当可以获取到用户的 “登录 ID” 时，使用登录接口设置 “登录 ID”
@@ -53,7 +63,7 @@ int main() {
   sensors_analytics::Sdk::ProfileSetNumber("Age", 26);
 
   // 为数组类型的用户属性追加值
-  sensors_analytics::Sdk::ProfileAppend("hobby", "电影");
+  sensors_analytics::Sdk::ProfileAppend("hobby", "movie");
 
   // 上面所有埋点都没有真正发送到服务端，当有网络的时候，请调用 Flush 手工触发发送
   // 注意：仅当调用 Flush 函数才会触发网络发送
