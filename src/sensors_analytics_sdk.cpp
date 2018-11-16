@@ -803,6 +803,9 @@ void DefaultConsumer::LoadRecordFromDisk() {
     std::ifstream staging_ifs(data_file_path_, std::ofstream::in);
     string line;
     while (staging_ifs >> line) {
+      if (line.length() == 0 || line[0] != '{' || line[line.length() - 1] != '}') {
+        continue;
+      }
       record_buffer.emplace_back(line);
       if (record_buffer.size() > memory_remain_size) {
         record_buffer.pop_front();
