@@ -19,6 +19,7 @@ int main() {
   const string server_url = "http://10.19.141.151:8106/sa?project=test";
 
   // 随机生成 UUID 作为 distinct_id
+  // 注意：这里只是作为 demo 演示，随机生成一个 ID，如果正式使用，可以生成使用其他格式的设备 ID，并且自己保存下来，下次构造 SDK 时使用之前相同的 ID 以标识同一设备。
   const string distinct_id = GenerateId();
   std::cout << "distinct_id: " << distinct_id << std::endl;
   // 神策 ID 分为 “设备 ID” 和 “登录 ID” 两种，随机生成的是 “设备 ID”
