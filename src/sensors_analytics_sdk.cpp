@@ -875,7 +875,7 @@ void DefaultConsumer::LoadRecordFromDisk() {
     std::deque<string> record_buffer;
     std::ifstream staging_ifs(data_file_path_.c_str(), std::ofstream::in);
     string line;
-    while (staging_ifs >> line) {
+    while (std::getline(staging_ifs, line)) {
       if (line.length() == 0 || line[0] != '{' || line[line.length() - 1] != '}') {
         continue;
       }
