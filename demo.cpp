@@ -1,6 +1,7 @@
 //
 // Created by Feng Jiajie on 2018/9/6.
 //
+// https://www.sensorsdata.cn/_manual/cpp_sdk.html
 
 #include <string>
 #include <cstdlib>
@@ -16,7 +17,7 @@ int main() {
   const string staging_file_path = "./staging_file";
 
   // 服务端数据接收地址
-  const string server_url = "http://10.19.141.151:8106/sa?project=test";
+  const string server_url = "http://10.42.133.150:8106/sa?project=test";
 
   // 随机生成 UUID 作为 distinct_id
   // 注意：这里只是作为 demo 演示，随机生成一个 ID，如果正式使用，可以生成使用其他格式的设备 ID，并且自己保存下来，下次构造 SDK 时使用之前相同的 ID 以标识同一设备。
@@ -47,7 +48,7 @@ int main() {
   event_properties.SetNumber("test_number_int", 3);
   event_properties.SetNumber("test_number_double", 3.14);
   event_properties.SetBool("test_bool", true);
-  std::string test_string = "test_str";
+  std::string test_string = "测试字符串";
   event_properties.SetString("test_stl_string", test_string);
   event_properties.SetDateTime("test_time", time(NULL), 0);
   std::vector<std::string> test_list;

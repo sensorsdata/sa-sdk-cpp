@@ -1,6 +1,8 @@
 /*
- * Copyright (C) 2018 SensorsAnalytics
+ * Copyright (C) 2019 SensorsAnalytics
  * All rights reserved.
+ *
+ * https://www.sensorsdata.cn/manual/cpp_sdk.html
  */
 
 #pragma once
