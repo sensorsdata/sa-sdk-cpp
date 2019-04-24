@@ -46,7 +46,7 @@ void ObjectNode::SetNumber(const string& property_name, int64_t value) {
 static const size_t kStringPropertyValueMaxLength = 8192;
 
 bool CheckUtf8Valid(const string& str) {
-  // https://stackoverflow.com/questions/1031645/how-to-detect-utf-8-in-plain-c/1031683#1031683 Christoph
+  // https://stackoverflow.com/a/1031773
   const unsigned char* bytes = (const unsigned char*) str.data();
   const unsigned char* begin = bytes;
   while (bytes - begin < str.length()) {
