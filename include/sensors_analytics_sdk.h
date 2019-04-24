@@ -1,6 +1,8 @@
 /*
- * Copyright (C) 2018 SensorsAnalytics
+ * Copyright (C) 2019 SensorsAnalytics
  * All rights reserved.
+ *
+ * https://www.sensorsdata.cn/manual/cpp_sdk.html
  */
 
 #pragma once
@@ -16,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-#define SA_SDK_VERSION "0.2"
+#define SA_SDK_VERSION "0.3"
 #define SA_SDK_NAME "SensorsAnalytics CPP SDK"
 #define SA_SDK_FULL_NAME SA_SDK_NAME " " SA_SDK_VERSION
 

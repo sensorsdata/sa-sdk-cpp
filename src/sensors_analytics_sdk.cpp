@@ -1,6 +1,8 @@
 /*
- * Copyright (C) 2018 SensorsAnalytics
+ * Copyright (C) 2019 SensorsAnalytics
  * All rights reserved.
+ *
+ * https://www.sensorsdata.cn/manual/cpp_sdk.html
  */
 
 #include "sensors_analytics_sdk.h"
@@ -20,8 +22,10 @@
 #if defined(_WIN32)
 #include <windows.h>
 #else
+
 #include <pthread.h>
 #include <sys/time.h>
+
 #endif
 
 namespace sensors_analytics {
@@ -39,12 +43,56 @@ void ObjectNode::SetNumber(const string& property_name, int64_t value) {
   properties_map_[property_name] = ValueNode(value);
 }
 
+static const size_t kStringPropertyValueMaxLength = 8192;
+
+bool CheckUtf8Valid(const string& str) {
+  // https://stackoverflow.com/a/1031773
+  const unsigned char* bytes = (const unsigned char*) str.data();
+  const unsigned char* begin = bytes;
+  while (bytes - begin < str.length()) {
+    if ((bytes[0] == 0x09 || bytes[0] == 0x0A || bytes[0] == 0x0D || (0x20 <= bytes[0] && bytes[0] <= 0x7E))) {
+      bytes += 1;
+      continue;
+    }
+    if (((0xC2 <= bytes[0] && bytes[0] <= 0xDF) && (0x80 <= bytes[1] && bytes[1] <= 0xBF))) {
+      bytes += 2;
+      continue;
+    }
+    if ((bytes[0] == 0xE0 && (0xA0 <= bytes[1] && bytes[1] <= 0xBF) && (0x80 <= bytes[2] && bytes[2] <= 0xBF)) ||
+        (((0xE1 <= bytes[0] && bytes[0] <= 0xEC) || bytes[0] == 0xEE || bytes[0] == 0xEF) &&
+         (0x80 <= bytes[1] && bytes[1] <= 0xBF) && (0x80 <= bytes[2] && bytes[2] <= 0xBF)) ||
+        (bytes[0] == 0xED && (0x80 <= bytes[1] && bytes[1] <= 0x9F) && (0x80 <= bytes[2] && bytes[2] <= 0xBF))) {
+      bytes += 3;
+      continue;
+    }
+    if ((bytes[0] == 0xF0 && (0x90 <= bytes[1] && bytes[1] <= 0xBF) && (0x80 <= bytes[2] && bytes[2] <= 0xBF) &&
+         (0x80 <= bytes[3] && bytes[3] <= 0xBF)) ||
+        ((0xF1 <= bytes[0] && bytes[0] <= 0xF3) && (0x80 <= bytes[1] && bytes[1] <= 0xBF) &&
+         (0x80 <= bytes[2] && bytes[2] <= 0xBF) && (0x80 <= bytes[3] && bytes[3] <= 0xBF)) ||
+        (bytes[0] == 0xF4 && (0x80 <= bytes[1] && bytes[1] <= 0x8F) && (0x80 <= bytes[2] && bytes[2] <= 0xBF) &&
+         (0x80 <= bytes[3] && bytes[3] <= 0xBF))) {
+      bytes += 4;
+      continue;
+    }
+    return false;
+  }
+  return bytes - begin == str.length();
+}
+
 void ObjectNode::SetString(const string& property_name, const string& value) {
+  if (value.length() > kStringPropertyValueMaxLength) {
+    std::cerr << "String property '" << property_name << "' is too long, value: " << value << std::endl;
+    return;
+  }
+  if (!CheckUtf8Valid(value)) {
+    std::cerr << "String property '" << property_name << "' is not valid UTF-8 string, value: " << value << std::endl;
+    return;
+  }
   properties_map_[property_name] = ValueNode(value);
 }
 
 void ObjectNode::SetString(const string& property_name, const char* value) {
-  properties_map_[property_name] = ValueNode(string(value));
+  SetString(property_name, string(value));
 }
 
 void ObjectNode::SetBool(const string& property_name, bool value) {
