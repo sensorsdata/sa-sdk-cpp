@@ -19,11 +19,17 @@
 
 请参见 [release 发版记录](https://github.com/sensorsdata/sa-sdk-cpp/releases)
 
-## 开源社区
-神策正在组建开源社区，所以相应的源码也会放在 GitHub 上。     
-如果是咨询神策收费，以及 SDK 使用问题，请扫码加入神策官方 SDK QQ 讨论群，群号：785122381<br><br>    
-![ QQ 讨论群](https://raw.githubusercontent.com/sensorsdata/sa-sdk-android/master/docs/qrCode.jpeg) 
+## 讨论
 
+| 扫码加入神策数据开源社区 QQ 群<br>群号：785122381 | 扫码加入神策数据开源社区微信群 |
+| ------ | ------ |
+|![ QQ 讨论群](https://raw.githubusercontent.com/richardhxy/OpensourceQRCode/master/docs/qrCode_for_qq.jpg) | ![ 微信讨论群 ](https://raw.githubusercontent.com/richardhxy/OpensourceQRCode/master/docs/qrcode_for_wechat.JPG) |
+
+## 公众号
+
+| 扫码关注<br>神策数据开源社区 | 扫码关注<br>神策数据开源社区服务号 |
+| ------ | ------ |
+|![ 微信订阅号 ](https://raw.githubusercontent.com/richardhxy/OpensourceQRCode/master/docs/qrcode_for_wechat_subscription_account.jpg) | ![ 微信服务号 ](https://raw.githubusercontent.com/richardhxy/OpensourceQRCode/master/docs/qrcode_for_wechat_service_account.jpg) |
 
 ## License
 
