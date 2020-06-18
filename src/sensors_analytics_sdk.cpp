@@ -1074,7 +1074,7 @@ do { \
 #else
             struct timeval now;
             gettimeofday(&now, NULL);
-            current_timestamp = (long) now.tv_sec * 1000 + (long) (now.tv_usec / 1000);
+            current_timestamp = (long long) now.tv_sec * 1000 + (long) (now.tv_usec / 1000);
 #endif
         }
 
@@ -1151,7 +1151,7 @@ do { \
 #else
             struct timeval now;
             gettimeofday(&now, NULL);
-            current_timestamp = (long) now.tv_sec * 1000 + (long) (now.tv_usec / 1000);
+            current_timestamp = (long long) now.tv_sec * 1000 + (now.tv_usec / 1000);
 #endif
         }
         string project;
