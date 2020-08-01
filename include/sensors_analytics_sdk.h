@@ -27,7 +27,7 @@
 #include <utility>
 #include <vector>
 
-#define SA_SDK_VERSION "0.6"
+#define SA_SDK_VERSION "0.7"
 #define SA_SDK_NAME "SensorsAnalytics CPP SDK"
 #define SA_SDK_FULL_NAME SA_SDK_NAME " " SA_SDK_VERSION
 
@@ -162,6 +162,10 @@ class Sdk {
   // 只有当开启 AppendRecordsToDisk 时调用此接口才有效
   static void DumpAllRecordsToDisk();
 
+  static void SetCookie(const string &cookie, bool encode);
+
+  static string GetCookie(bool decode);
+
   ~Sdk();
 
  private:
@@ -219,8 +223,7 @@ class ObjectNode {
 
   void SetList(const string &property_name, const std::vector<string> &value);
 
-  void
-  SetDateTime(const string &property_name, time_t seconds, int milliseconds);
+  void SetDateTime(const string &property_name, time_t seconds, int milliseconds);
 
   // 字符串格式需要是: 2018-09-07 16:30:22.567
   void SetDateTime(const string &property_name, const string &value);

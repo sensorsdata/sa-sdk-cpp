@@ -40,6 +40,50 @@
 namespace sensors_analytics {
 namespace utils {
 
+string UrlEncode(const string &data) {
+  std::ostringstream escaped;
+  escaped.fill('0');
+  escaped << std::hex;
+  for (std::string::size_type i = 0; i < data.size(); ++i) {
+    unsigned char c = data[i];
+    // Keep alphanumeric and other accepted characters intact
+    if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+      escaped << c;
+      continue;
+    }
+    // Any other characters are percent-encoded
+    escaped << std::uppercase;
+    escaped << '%' << std::setw(2) << int((unsigned char) c);
+    escaped << std::nouppercase;
+  }
+  return escaped.str();
+}
+
+unsigned char DecimalFromHex(unsigned char x) {
+    unsigned char y = '\0';
+    if (x >= 'A' && x <= 'Z') y = x - 'A' + 10;
+    else if (x >= 'a' && x <= 'z') y = x - 'a' + 10;
+    else if (x >= '0' && x <= '9') y = x - '0';
+    return y;
+}
+
+string UrlDecode(const string &data)
+{
+    std::string result = "";
+    size_t length = data.length();
+    for (size_t i = 0; i < length; i++)
+    {
+        if (data[i] == '+') result += ' ';
+        else if (data[i] == '%') {
+            unsigned char high = DecimalFromHex((unsigned char)data[++i]);
+            unsigned char low = DecimalFromHex((unsigned char)data[++i]);
+            result += high * 16 + low;
+        }
+        else result += data[i];
+    }
+    return result;
+}
+
 void ObjectNode::SetNumber(const string &property_name, double value) {
   properties_map_[property_name] = ValueNode(value);
 }
@@ -455,6 +499,7 @@ Response Connection::PerformCurlRequest(const std::string &uri) {
                    helpers::HeaderCallback);
   /** callback object for headers */
   curl_easy_setopt(this->curl_handle_, CURLOPT_HEADERDATA, &ret);
+
   /** set http headers */
   for (HeaderFields::const_iterator it = this->header_fields_.begin();
        it != this->header_fields_.end(); ++it) {
@@ -641,7 +686,7 @@ class HttpSender {
                                                   std::string> > &http_headers
                       = std::vector<std::pair<string, std::string> >());
 
-  bool Send(const string &data);
+  bool Send(const string &data, const std::vector<std::pair<string,string>> &http_headers);
 
  private:
   static bool
@@ -650,8 +695,6 @@ class HttpSender {
   static bool EncodeToRequestBody(const string &data, string *request_body);
 
   static string Base64Encode(const string &data);
-
-  static string UrlEncode(const string &data);
 
   friend class Sdk;
 
@@ -665,7 +708,7 @@ HttpSender::HttpSender(const string &server_url,
                                                    string> > &http_headers) :
     server_url_(server_url), http_headers_(http_headers) {}
 
-bool HttpSender::Send(const string &data) {
+bool HttpSender::Send(const string &data, const std::vector<std::pair<string,string>> &http_headers) {
   string request_body;
   if (!EncodeToRequestBody(data, &request_body)) {
     return false;
@@ -674,7 +717,8 @@ bool HttpSender::Send(const string &data) {
       response = utils::rest_client::Post(server_url_,
                                           "",
                                           request_body,
-                                          kRequestTimeoutSecond);
+                                          kRequestTimeoutSecond,
+                                          http_headers);
   if (response.code_ != 200) {
     std::cerr << "SensorsAnalytics SDK send failed: " << response.body_
               << std::endl;
@@ -771,35 +815,13 @@ std::string HttpSender::Base64Encode(const string &data) {
   return ret;
 }
 
-string HttpSender::UrlEncode(const string &data) {
-  std::ostringstream escaped;
-  escaped.fill('0');
-  escaped << std::hex;
-
-  for (std::string::size_type i = 0; i < data.size(); ++i) {
-    char c = data[i];
-    // Keep alphanumeric and other accepted characters intact
-    if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
-      escaped << c;
-      continue;
-    }
-
-    // Any other characters are percent-encoded
-    escaped << std::uppercase;
-    escaped << '%' << std::setw(2) << int((unsigned char) c);
-    escaped << std::nouppercase;
-  }
-
-  return escaped.str();
-}
-
 bool HttpSender::EncodeToRequestBody(const string &data, string *request_body) {
   string compressed_data;
   if (!CompressString(data, &compressed_data)) {
     return false;
   }
   const string base64_encoded_data = Base64Encode(compressed_data);
-  *request_body = "data_list=" + UrlEncode(base64_encoded_data) + "&gzip=1";
+  *request_body = "data_list=" + utils::UrlEncode(base64_encoded_data) + "&gzip=1";
   return true;
 }
 
@@ -835,6 +857,8 @@ class DefaultConsumer {
 
   //将队列中的所有数据直接存到本地文件中，并清空队列内容
   void DumpAllRecordsToDisk();
+
+  string request_header_cookie;
 
   ~DefaultConsumer();
 
@@ -956,7 +980,16 @@ bool DefaultConsumer::FlushPart(size_t part_size, bool drop_failed_record) {
   if (enable_log_) {
     std::cout << "flush record : " + buffer.str() << std::endl;
   }
-  bool send_result = sender_->Send(buffer.str());
+
+  // 添加自定义的 Cookie 信息
+  std::vector<std::pair<string,string>> http_headers;
+  if (request_header_cookie.length() > 0 ) {
+    std::pair<string, string> cookie;
+    cookie.first = "Cookie";
+    cookie.second = request_header_cookie;
+    http_headers.insert(http_headers.begin(), cookie);
+  }
+  bool send_result = sender_->Send(buffer.str(), http_headers);
 
   if (!send_result && !drop_failed_record) {
     // 如果发送失败并且发送失败的不能丢，那么放回发送队列
@@ -1126,6 +1159,17 @@ void Sdk::EnableLog(bool enable) {
 //将队列中的所有数据直接存到本地文件中，并清空队列内容
   void Sdk::DumpAllRecordsToDisk() {
       instance_->consumer_->DumpAllRecordsToDisk();
+  }
+
+  void Sdk::SetCookie(const string &cookie, bool encode) {
+      string encodedCookie = encode ? utils::UrlEncode(cookie) : cookie;
+      instance_->consumer_->request_header_cookie = encodedCookie;
+  }
+
+  string Sdk::GetCookie(bool decode) {
+      string cookie = instance_->consumer_->request_header_cookie;
+      string decodeCookie = decode ? utils::UrlDecode(cookie) : cookie;
+      return decodeCookie;
   }
 
 void Sdk::RegisterSuperProperties(const PropertiesNode &properties) {
@@ -1593,6 +1637,7 @@ void Sdk::TrackInstallation(const string &event_name,
   if (instance_) {
     PropertiesNode properties_node;
     properties_node.SetString("$ios_install_source", "");
+    properties_node.MergeFrom(properties);
     instance_->AddEvent("track",
                         event_name,
                         properties_node,
