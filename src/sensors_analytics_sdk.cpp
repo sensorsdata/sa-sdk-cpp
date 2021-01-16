@@ -993,20 +993,26 @@ bool DefaultConsumer::FlushPart(size_t part_size, bool drop_failed_record) {
 
   if (!send_result && !drop_failed_record) {
     // 如果发送失败并且发送失败的不能丢，那么放回发送队列
-    {
-      LockGuard records_lock(&records_mutex_);
-      size_t records_remain_size = max_staging_record_count_ - records_.size();
-      if (records_remain_size > 0) {
-        // 需要从最前面补满 records_，从 sending_records 的 begin_idx 元素到最后一个元素
-        size_t begin_idx = sending_records.size() > records_remain_size ?
-                           sending_records.size() - records_remain_size : 0;
-        std::vector<string>::iterator
-            copy_sending_begin = sending_records.begin() + begin_idx;
-        records_.insert(records_.begin(),
-                        copy_sending_begin,
-                        sending_records.end());
+      try {
+        {
+            LockGuard records_lock(&records_mutex_);
+            size_t records_remain_size = max_staging_record_count_ - records_.size();
+            if (records_remain_size > 0) {
+              // 需要从最前面补满 records_，从 sending_records 的 begin_idx 元素到最后一个元素
+              size_t begin_idx = sending_records.size() > records_remain_size ?
+                                 sending_records.size() - records_remain_size : 0;
+              std::vector<string>::iterator
+                  copy_sending_begin = sending_records.begin() + begin_idx;
+              records_.insert(records_.begin(),
+                              copy_sending_begin,
+                              sending_records.end());
+            }
+        }
+      } catch (std::exception& err) {
+          std::cerr << "Exception when flush failed: (" << err.what() << ") " << std::endl;
+      } catch (...) {
+          // 规避 Flush 时接口请求异常发生的偶现异常情况
       }
-    }
   }
   return send_result;
 }
@@ -1275,7 +1281,6 @@ bool Sdk::AddItemEvent(const std::string &action_type,
   utils::ObjectNode record_properties;
   if (action_type == "item_set") {
     RETURN_IF_ERROR(AssertProperties(properties));
-    record_properties.MergeFrom(*super_properties_);
     record_properties.MergeFrom(properties);
   }
   RETURN_IF_ERROR(AssertKey("Item Type", item_type));
