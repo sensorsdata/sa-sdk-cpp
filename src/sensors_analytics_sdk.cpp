@@ -40,6 +40,38 @@
 namespace sensors_analytics {
 namespace utils {
 
+int64_t CurrentTimestamp() {
+    int64_t current_timestamp;
+#if defined(_WIN32)
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    const int64_t kUnixTimeStart = 0x019DB1DED53E8000L; //January 1, 1970 (start of Unix epoch) in "ticks"
+    const int64_t kTicksPerMillisecond = 10000;
+    LARGE_INTEGER li;
+    li.LowPart  = ft.dwLowDateTime;
+    li.HighPart = ft.dwHighDateTime;
+    current_timestamp = (li.QuadPart - kUnixTimeStart) / kTicksPerMillisecond;
+#else
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    current_timestamp = (long long) now.tv_sec * 1000 + (long) (now.tv_usec / 1000);
+#endif
+    return current_timestamp;
+}
+
+int64_t GenerateTrackId() {
+    string first = std::to_string(rand() % 99 + 100);
+    string first_sub = first.substr(first.length() - 2, 2);
+
+    string second = std::to_string(rand() % 999 + 1000);
+    string second_sub = second.substr(second.length() - 3, 3);
+
+    string timestamp = std::to_string(CurrentTimestamp());
+    string timestamp_sub = timestamp.substr(timestamp.length() - 4, 4);
+
+    return std::stoi(first_sub + second_sub + timestamp_sub);
+}
+
 string UrlEncode(const string &data) {
   std::ostringstream escaped;
   escaped.fill('0');
@@ -1149,6 +1181,8 @@ bool Sdk::Init(const std::string &data_file_path,
                         distinct_id,
                         is_login_id);
     instance_->consumer_->Init();
+    // 生成 track_id 随机数算子
+    srand((unsigned)time(NULL));
   }
   return true;
 }
@@ -1217,20 +1251,7 @@ bool Sdk::AddEvent(const string &action_type,
             time_property_iter->second.value_.date_time_value.milliseconds;
     record_properties.properties_map_.erase(time_property_iter);
   } else {
-#if defined(_WIN32)
-    FILETIME ft;
-    GetSystemTimeAsFileTime(&ft);
-    const int64_t kUnixTimeStart = 0x019DB1DED53E8000L; //January 1, 1970 (start of Unix epoch) in "ticks"
-    const int64_t kTicksPerMillisecond = 10000;
-    LARGE_INTEGER li;
-    li.LowPart  = ft.dwLowDateTime;
-    li.HighPart = ft.dwHighDateTime;
-    current_timestamp = (li.QuadPart - kUnixTimeStart) / kTicksPerMillisecond;
-#else
-    struct timeval now;
-    gettimeofday(&now, NULL);
-    current_timestamp = (long long) now.tv_sec * 1000 + (long) (now.tv_usec / 1000);
-#endif
+    current_timestamp = utils::CurrentTimestamp();
   }
 
   string project;
@@ -1258,6 +1279,9 @@ bool Sdk::AddEvent(const string &action_type,
   record_node.SetString("distinct_id", distinct_id);
   record_node.SetObject("properties", record_properties);
   record_node.SetObject("lib", lib_node);
+
+  // 新增 _track_id，用于过滤重复数据
+  record_node.SetNumber("_track_id", utils::GenerateTrackId());
 
   if (project.length() > 0) {
     record_node.SetString("project", project);
@@ -1295,20 +1319,7 @@ bool Sdk::AddItemEvent(const std::string &action_type,
             time_property_iter->second.value_.date_time_value.milliseconds;
     record_properties.properties_map_.erase(time_property_iter);
   } else {
-#if defined(_WIN32)
-    FILETIME ft;
-    GetSystemTimeAsFileTime(&ft);
-    const int64_t kUnixTimeStart = 0x019DB1DED53E8000L; //January 1, 1970 (start of Unix epoch) in "ticks"
-    const int64_t kTicksPerMillisecond = 10000;
-    LARGE_INTEGER li;
-    li.LowPart  = ft.dwLowDateTime;
-    li.HighPart = ft.dwHighDateTime;
-    current_timestamp = (li.QuadPart - kUnixTimeStart) / kTicksPerMillisecond;
-#else
-    struct timeval now;
-    gettimeofday(&now, NULL);
-    current_timestamp = (long long) now.tv_sec * 1000 + (long) (now.tv_usec / 1000);
-#endif
+    current_timestamp = utils::CurrentTimestamp();
   }
   string project;
   std::map<string, utils::ObjectNode::ValueNode>::iterator
