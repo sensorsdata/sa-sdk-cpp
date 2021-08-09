@@ -21,13 +21,14 @@
 #include <cstring>
 #include <ctime>
 #include <deque>
+#include <list>
 #include <map>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#define SA_SDK_VERSION "0.9"
+#define SA_SDK_VERSION "1.0.0"
 #define SA_SDK_NAME "SensorsAnalytics CPP SDK"
 #define SA_SDK_FULL_NAME SA_SDK_NAME " " SA_SDK_VERSION
 
@@ -46,7 +47,7 @@ typedef __int64 int64_t;
 
 namespace sensors_analytics {
 
-using std::string;
+using namespace std;
 
 class Sdk;
 
@@ -57,6 +58,12 @@ namespace utils {
 class ObjectNode;
 }
 
+/// 用户变更观察者，当 distinct_id 发生变化时会触发 update() 函数
+class UserAlterationObserver {
+ public:
+  virtual void Update() = 0;
+};
+
 class Sdk {
  public:
   // 初始化 SDK
@@ -64,12 +71,11 @@ class Sdk {
   // server_url: 神策服务器地址
   // distinct_id: 标识一个用户的 ID
   // is_login_id: distinct_id 参数传值是否是一个“登录 ID”
-  // max_staging_record_count: 在发送队列中最多保存的数据条数，若当前未发送数据条数达到该值，
+  // max_staging_record_count:
+  // 在发送队列中最多保存的数据条数，若当前未发送数据条数达到该值，
   //                           新埋点记录将淘汰最早的一个记录
-  static bool Init(const string &data_file_path,
-                   const string &server_url,
-                   const string &distinct_id,
-                   bool is_login_id,
+  static bool Init(const string &data_file_path, const string &server_url,
+                   const string &distinct_id, bool is_login_id,
                    int max_staging_record_count);
 
   static void EnableLog(bool enable);
@@ -100,16 +106,14 @@ class Sdk {
   static void Track(const string &event_name, const PropertiesNode &properties);
 
   //记录物品元数据事件
-  static void ItemSet(const string &item_type,
-                      const string &item_id,
+  static void ItemSet(const string &item_type, const string &item_id,
                       PropertiesNode &properties);
 
   static void ItemDelete(const string &item_type, const string &item_id);
 
-
   // 记录安装事件，安装后首次启动调用，服务端可以根据 IP 等匹配渠道信息
-  static void
-  TrackInstallation(const string &event_name, const PropertiesNode &properties);
+  static void TrackInstallation(const string &event_name,
+                                const PropertiesNode &properties);
 
   // 记录“登录”，将登陆前后 ID 绑定。之后会使用 login_id 作为 distinct_id
   static void Login(const string &login_id);
@@ -120,27 +124,27 @@ class Sdk {
   // 设置一个用户属性，已存在则覆盖
   static void ProfileSet(const PropertiesNode &properties);
 
-  static void
-  ProfileSetString(const string &property_name, const string &str_value);
+  static void ProfileSetString(const string &property_name,
+                               const string &str_value);
 
   static void ProfileSetNumber(const string &property_name, int number_value);
 
-  static void
-  ProfileSetNumber(const string &property_name, double number_value);
+  static void ProfileSetNumber(const string &property_name,
+                               double number_value);
 
   static void ProfileSetBool(const string &property_name, bool bool_value);
 
   // 设置一个用户属性，仅当之前此属性没有值时该操作有效
   static void ProfileSetOnce(const PropertiesNode &properties);
 
-  static void
-  ProfileSetOnceString(const string &property_name, const string &str_value);
+  static void ProfileSetOnceString(const string &property_name,
+                                   const string &str_value);
 
-  static void
-  ProfileSetOnceNumber(const string &property_name, int number_value);
+  static void ProfileSetOnceNumber(const string &property_name,
+                                   int number_value);
 
-  static void
-  ProfileSetOnceNumber(const string &property_name, double number_value);
+  static void ProfileSetOnceNumber(const string &property_name,
+                                   double number_value);
 
   static void ProfileSetOnceBool(const string &property_name, bool bool_value);
 
@@ -152,8 +156,8 @@ class Sdk {
   // 为用户的一个或多个数组类型的属性追加字符串
   static void ProfileAppend(const PropertiesNode &properties);
 
-  static void
-  ProfileAppend(const string &property_name, const string &str_value);
+  static void ProfileAppend(const string &property_name,
+                            const string &str_value);
 
   // 使用追加的方式把队列中数据添加到本地文件中，默认是 false
   static void AppendRecordsToDisk(bool enable);
@@ -166,29 +170,34 @@ class Sdk {
 
   static string GetCookie(bool decode);
 
+  static string DistinctID();
+  static bool IsLoginID();
+  static string StagingFilePath();
+  static bool IsEnableLog();
+
+  /// 增加观察者
+  static void Attach(UserAlterationObserver *observer);
+
+  // 移除观察者
+  static void Detach(UserAlterationObserver *observer);
+
   ~Sdk();
 
  private:
-  Sdk(const string &server_url,
-      const string &data_file_path,
-      int max_staging_record_count,
-      const string &distinct_id,
+  Sdk(const string &server_url, const string &data_file_path,
+      int max_staging_record_count, const string &distinct_id,
       bool is_login_id);
 
   Sdk(const Sdk &);
 
   Sdk &operator=(const Sdk &);
 
-  bool AddEvent(const string &action_type,
-                const string &event_name,
-                const utils::ObjectNode &properties,
-                const string &distinct_id,
+  bool AddEvent(const string &action_type, const string &event_name,
+                const utils::ObjectNode &properties, const string &distinct_id,
                 const string &original_id);
 
-  bool AddItemEvent(const string &action_type,
-                    const string &item_type,
-                    const string &item_id,
-                    const utils::ObjectNode &properties);
+  bool AddItemEvent(const string &action_type, const string &item_type,
+                    const string &item_id, const utils::ObjectNode &properties);
 
   void ResetSuperProperties();
 
@@ -198,10 +207,14 @@ class Sdk {
 
   static bool AssertId(const string &type, const string &key);
 
+  static void Notify();  // 通知
+
   static Sdk *instance_;
   PropertiesNode *super_properties_;
   string distinct_id_;
   bool is_login_id_;
+  string staging_file_path_;
+  vector<UserAlterationObserver *> observers;
   DefaultConsumer *consumer_;
 };
 
@@ -223,7 +236,8 @@ class ObjectNode {
 
   void SetList(const string &property_name, const std::vector<string> &value);
 
-  void SetDateTime(const string &property_name, time_t seconds, int milliseconds);
+  void SetDateTime(const string &property_name, time_t seconds,
+                   int milliseconds);
 
   // 字符串格式需要是: 2018-09-07 16:30:22.567
   void SetDateTime(const string &property_name, const string &value);
@@ -285,8 +299,8 @@ class ObjectNode::ValueNode {
 
   static void DumpList(const std::vector<string> &value, string *buffer);
 
-  static void
-  DumpDateTime(const time_t &seconds, int milliseconds, string *buffer);
+  static void DumpDateTime(const time_t &seconds, int milliseconds,
+                           string *buffer);
 
   static void DumpNumber(double value, string *buffer);
 
@@ -314,7 +328,7 @@ class ObjectNode::ValueNode {
 };
 }  // namespace utils
 
-class PropertiesNode: public utils::ObjectNode {
+class PropertiesNode : public utils::ObjectNode {
  private:
   friend class Sdk;
 

@@ -15,6 +15,7 @@
  */
 
 #include "sensors_analytics_sdk.h"
+#include "sensors_network.h"
 
 #include <curl/curl.h>
 #include <zlib.h>
@@ -134,7 +135,7 @@ bool CheckUtf8Valid(const string &str) {
   // https://stackoverflow.com/a/1031773
   const unsigned char *bytes = (const unsigned char *) str.data();
   const unsigned char *begin = bytes;
-  while (bytes - begin < str.length()) {
+  while (bytes - begin < (int)str.length()) {
     if ((bytes[0] == 0x09 || bytes[0] == 0x0A || bytes[0] == 0x0D ||
         (0x20 <= bytes[0] && bytes[0] <= 0x7E))) {
       bytes += 1;
@@ -406,309 +407,6 @@ void ObjectNode::ValueNode::DumpNumber(int64_t value, string *buffer) {
   *buffer += buf.str();
 }
 
-namespace rest_client {
-
-typedef std::map<std::string, std::string> HeaderFields;
-
-typedef struct {
-  int code_;
-  std::string body_;
-  HeaderFields headers_;
-} Response;
-
-class Connection {
- public:
-  typedef struct {
-    double total_time_;
-    double name_lookup_time_;
-    double connect_time_;
-    double app_connect_time_;
-    double pre_transfer_time_;
-    double start_transfer_time_;
-    double redirect_time_;
-    int redirect_count_;
-  } RequestInfo;
-
-  explicit Connection(const std::string &base_url);
-
-  ~Connection();
-
-  void SetTimeout(int seconds);
-
-  void AppendHeader(const std::string &key, const std::string &value);
-
-  Response Post(const std::string &url, const std::string &data);
-
- private:
-  Response PerformCurlRequest(const std::string &uri);
-
-  CURL *curl_handle_;
-  std::string base_url_;
-  HeaderFields header_fields_;
-  int timeout_;
-  bool follow_redirects_;
-  int max_redirects_;
-  bool no_signal_;
-  RequestInfo last_request_;
-};
-
-Response Post(const std::string &url,
-              const std::string &ctype,
-              const std::string &data,
-              int timeout_second,
-              const std::vector<std::pair<string, string> > &headers
-              = std::vector<std::pair<string, string> >());
-
-namespace helpers {
-size_t WriteCallback(void *data, size_t size, size_t nmemb, void *user_data);
-
-size_t HeaderCallback(void *data, size_t size, size_t nmemb, void *user_data);
-
-inline std::string &TrimLeft(std::string &s);  // NOLINT
-inline std::string &TrimRight(std::string &s);  // NOLINT
-inline std::string &Trim(std::string &s);  // NOLINT
-}  // namespace helpers
-
-Connection::Connection(const std::string &base_url)
-    : last_request_(), header_fields_() {
-  this->curl_handle_ = curl_easy_init();
-  if (!this->curl_handle_) {
-    throw std::runtime_error("Couldn't initialize curl handle");
-  }
-  this->base_url_ = base_url;
-  this->timeout_ = 0;
-  this->follow_redirects_ = false;
-  this->max_redirects_ = -1l;
-  this->no_signal_ = false;
-}
-
-Connection::~Connection() {
-  if (this->curl_handle_) {
-    curl_easy_cleanup(this->curl_handle_);
-  }
-}
-
-void
-Connection::AppendHeader(const std::string &key, const std::string &value) {
-  this->header_fields_[key] = value;
-}
-
-void Connection::SetTimeout(int seconds) {
-  this->timeout_ = seconds;
-}
-
-/**
- * @brief helper function to get called from the actual request methods to
- * prepare the curlHandle for transfer with generic options, perform the
- * request and record some stats from the last request and then reset the
- * handle with curl_easy_reset to its default state. This will keep things
- * like connections and session ID intact but makes sure you can change
- * parameters on the object for another request.
- *
- * @param uri URI to query
- * @param ret Reference to the Response struct that should be filled
- *
- * @return 0 on success and 1 on error
- */
-Response Connection::PerformCurlRequest(const std::string &uri) {
-  // init return type
-  Response ret = {};
-
-  std::string url = std::string(this->base_url_ + uri);
-  std::string header_string;
-  CURLcode res;
-  curl_slist *header_list = NULL;
-
-  /** set query URL */
-  curl_easy_setopt(this->curl_handle_, CURLOPT_URL, url.c_str());
-  /** set callback function */
-  curl_easy_setopt(this->curl_handle_, CURLOPT_WRITEFUNCTION,
-                   helpers::WriteCallback);
-  /** set data object to pass to callback function */
-  curl_easy_setopt(this->curl_handle_, CURLOPT_WRITEDATA, &ret);
-  /** set the header callback function */
-  curl_easy_setopt(this->curl_handle_, CURLOPT_HEADERFUNCTION,
-                   helpers::HeaderCallback);
-  /** callback object for headers */
-  curl_easy_setopt(this->curl_handle_, CURLOPT_HEADERDATA, &ret);
-
-  /** set http headers */
-  for (HeaderFields::const_iterator it = this->header_fields_.begin();
-       it != this->header_fields_.end(); ++it) {
-    header_string = it->first;
-    header_string += ": ";
-    header_string += it->second;
-    header_list = curl_slist_append(header_list, header_string.c_str());
-  }
-  curl_easy_setopt(this->curl_handle_, CURLOPT_HTTPHEADER,
-                   header_list);
-  /** set user agent */
-  curl_easy_setopt(this->curl_handle_, CURLOPT_USERAGENT,
-                   SA_SDK_FULL_NAME);
-
-  // 若使用 HTTPS，有两种配置方式，选用其中一种即可：
-  // 1. 使用 CA 证书（下载地址 http://curl.haxx.se/ca/cacert.pem ），去掉下面一行的注释，并指定证书路径，例如证书在当前目录下
-  // curl_easy_setopt(this->curl_handle_, CURLOPT_CAINFO, "cacert.pem");
-  // 2. （不建议，仅测试时方便可以使用）不验证服务端证书，去掉下面两行的注释
-  // curl_easy_setopt(this->curl_handle_, CURLOPT_SSL_VERIFYHOST, 0L);
-  // curl_easy_setopt(this->curl_handle_, CURLOPT_SSL_VERIFYPEER, 0L);
-
-  // set timeout
-  if (this->timeout_) {
-    curl_easy_setopt(this->curl_handle_, CURLOPT_TIMEOUT, this->timeout_);
-    // dont want to get a sig alarm on timeout
-    curl_easy_setopt(this->curl_handle_, CURLOPT_NOSIGNAL, 1);
-  }
-  // set follow redirect
-  if (this->follow_redirects_) {
-    curl_easy_setopt(this->curl_handle_, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(this->curl_handle_, CURLOPT_MAXREDIRS,
-                     static_cast<int64_t>(this->max_redirects_));
-  }
-
-  if (this->no_signal_) {
-    // multi-threaded and prevent entering foreign signal handler (e.g. JNI)
-    curl_easy_setopt(this->curl_handle_, CURLOPT_NOSIGNAL, 1);
-  }
-
-  res = curl_easy_perform(this->curl_handle_);
-  if (res != CURLE_OK) {
-    ret.body_ = curl_easy_strerror(res);
-    ret.code_ = -1;
-  } else {
-    int64_t http_code = 0;
-    curl_easy_getinfo(this->curl_handle_, CURLINFO_RESPONSE_CODE, &http_code);
-    ret.code_ = static_cast<int>(http_code);
-  }
-
-  curl_easy_getinfo(this->curl_handle_, CURLINFO_TOTAL_TIME,
-                    &this->last_request_.total_time_);
-  curl_easy_getinfo(this->curl_handle_, CURLINFO_NAMELOOKUP_TIME,
-                    &this->last_request_.name_lookup_time_);
-  curl_easy_getinfo(this->curl_handle_, CURLINFO_CONNECT_TIME,
-                    &this->last_request_.connect_time_);
-  curl_easy_getinfo(this->curl_handle_, CURLINFO_APPCONNECT_TIME,
-                    &this->last_request_.app_connect_time_);
-  curl_easy_getinfo(this->curl_handle_, CURLINFO_PRETRANSFER_TIME,
-                    &this->last_request_.pre_transfer_time_);
-  curl_easy_getinfo(this->curl_handle_, CURLINFO_STARTTRANSFER_TIME,
-                    &this->last_request_.start_transfer_time_);
-  curl_easy_getinfo(this->curl_handle_, CURLINFO_REDIRECT_TIME,
-                    &this->last_request_.redirect_time_);
-  curl_easy_getinfo(this->curl_handle_, CURLINFO_REDIRECT_COUNT,
-                    &this->last_request_.redirect_count_);
-  // free header list
-  curl_slist_free_all(header_list);
-  // reset curl handle
-  curl_easy_reset(this->curl_handle_);
-  return ret;
-}
-
-Response Connection::Post(const std::string &url, const std::string &data) {
-  /** Now specify we want to POST data */
-  curl_easy_setopt(this->curl_handle_, CURLOPT_POST, 1L);
-  /** set post fields */
-  curl_easy_setopt(this->curl_handle_, CURLOPT_POSTFIELDS, data.c_str());
-  curl_easy_setopt(this->curl_handle_, CURLOPT_POSTFIELDSIZE, data.size());
-
-  return this->PerformCurlRequest(url);
-}
-
-size_t
-helpers::WriteCallback(void *data, size_t size, size_t nmemb, void *user_data) {
-  Response *r;
-  r = reinterpret_cast<Response *>(user_data);
-  r->body_.append(reinterpret_cast<char *>(data), size * nmemb);
-
-  return (size * nmemb);
-}
-
-/**
- * @brief header callback for libcurl
- *
- * @param data returned (header line)
- * @param size of data
- * @param nmemb memblock
- * @param user_data pointer to user data object to save headr data
- * @return size * nmemb;
- */
-size_t helpers::HeaderCallback(void *data,
-                               size_t size,
-                               size_t nmemb,
-                               void *user_data) {
-  Response *r;
-  r = reinterpret_cast<Response *>(user_data);
-  std::string header(reinterpret_cast<char *>(data), size * nmemb);
-  size_t separator = header.find_first_of(':');
-  if (std::string::npos == separator) {
-    // roll with non seperated headers...
-    Trim(header);
-    if (0 == header.length()) {
-      return (size * nmemb);  // blank line;
-    }
-    r->headers_[header] = "present";
-  } else {
-    std::string key = header.substr(0, separator);
-    Trim(key);
-    std::string value = header.substr(separator + 1);
-    Trim(value);
-    r->headers_[key] = value;
-  }
-
-  return (size * nmemb);
-}
-
-inline std::string &helpers::TrimLeft(std::string &s) {  // NOLINT
-  s.erase(s.begin(),
-          std::find_if(s.begin(),
-                       s.end(),
-                       std::not1(std::ptr_fun<int, int>(std::isspace))));
-  return s;
-}
-
-inline std::string &helpers::TrimRight(std::string &s) { // NOLINT
-  s.erase(std::find_if(s.rbegin(),
-                       s.rend(),
-                       std::not1(std::ptr_fun<int, int>(std::isspace))).base(),
-          s.end());
-  return s;
-}
-
-inline std::string &helpers::Trim(std::string &s) {  // NOLINT
-  return TrimLeft(TrimRight(s));
-}
-
-Response Post(const std::string &url,
-              const std::string &ctype,
-              const std::string &data,
-              int timeout_second,
-              const std::vector<std::pair<string, string> > &headers) {
-  Response ret;
-  Connection *conn;
-  try {
-    conn = new Connection("");
-  } catch (std::runtime_error &e) {
-    std::cerr << e.what() << std::endl;
-    Response response;
-    response.code_ = -1;
-    response.body_ = e.what();
-    return response;
-  }
-
-  conn->SetTimeout(timeout_second);
-  if (ctype.length() > 0) {
-    conn->AppendHeader("Content-Type", ctype);
-  }
-  for (std::vector<std::pair<string, string> >::const_iterator
-           iterator = headers.begin();
-       iterator != headers.end(); ++iterator) {
-    conn->AppendHeader(iterator->first, iterator->second);
-  }
-  ret = conn->Post(url, data);
-  delete conn;
-  return ret;
-}
-}  // namespace rest_client
 }  // namespace utils
 
 class HttpSender {
@@ -718,7 +416,7 @@ class HttpSender {
                                                   std::string> > &http_headers
                       = std::vector<std::pair<string, std::string> >());
 
-  bool Send(const string &data, const std::vector<std::pair<string,string>> &http_headers);
+  bool Send(const string &data, const std::vector<std::pair<string,string> > &http_headers);
 
  private:
   static bool
@@ -740,17 +438,15 @@ HttpSender::HttpSender(const string &server_url,
                                                    string> > &http_headers) :
     server_url_(server_url), http_headers_(http_headers) {}
 
-bool HttpSender::Send(const string &data, const std::vector<std::pair<string,string>> &http_headers) {
+bool HttpSender::Send(const string &data, const std::vector<std::pair<string,string> > &http_headers) {
   string request_body;
   if (!EncodeToRequestBody(data, &request_body)) {
     return false;
   }
-  utils::rest_client::Response
-      response = utils::rest_client::Post(server_url_,
-                                          "",
-                                          request_body,
-                                          kRequestTimeoutSecond,
-                                          http_headers);
+  Response response = Post(server_url_,
+                           request_body,
+                           kRequestTimeoutSecond,
+                           http_headers);
   if (response.code_ != 200) {
     std::cerr << "SensorsAnalytics SDK send failed: " << response.body_
               << std::endl;
@@ -892,6 +588,8 @@ class DefaultConsumer {
 
   string request_header_cookie;
 
+  bool enable_log_;
+
   ~DefaultConsumer();
 
  private:
@@ -908,8 +606,6 @@ class DefaultConsumer {
   void Close();
 
   static const size_t kFlushAllBatchSize = 30;
-
-  bool enable_log_;
 
 #if defined(_WIN32)
 #define SA_MUTEX CRITICAL_SECTION
@@ -1014,7 +710,7 @@ bool DefaultConsumer::FlushPart(size_t part_size, bool drop_failed_record) {
   }
 
   // 添加自定义的 Cookie 信息
-  std::vector<std::pair<string,string>> http_headers;
+  std::vector<std::pair<string,string> > http_headers;
   if (request_header_cookie.length() > 0 ) {
     std::pair<string, string> cookie;
     cookie.first = "Cookie";
@@ -1465,6 +1161,16 @@ void Sdk::ItemDelete(const std::string &item_type, const std::string &item_id) {
 
 void Sdk::Login(const string &login_id) {
   if (instance_) {
+
+      if (login_id.length() > 255) {
+          cout << "loginId:" << login_id << "is beyond the maximum length 255" << endl;
+          return;
+      }
+
+      if (instance_->distinct_id_ == login_id) {
+          return;
+      }
+
     PropertiesNode properties_node;
     instance_->AddEvent("track_signup",
                         "$SignUp",
@@ -1473,13 +1179,21 @@ void Sdk::Login(const string &login_id) {
                         instance_->distinct_id_);
     instance_->distinct_id_ = login_id;
     instance_->is_login_id_ = true;
+
+      instance_->Notify();
   }
 }
 
 void Sdk::Identify(const string &distinct_id, bool is_login_id) {
   if (instance_) {
+      // 当登录状态和 distinct_id 都未发生变化时，不更新 distinct_id 和 is_login_id
+      if (is_login_id == instance_->is_login_id_ && distinct_id == instance_->distinct_id_) {
+          return;
+      }
+
     instance_->distinct_id_ = distinct_id;
     instance_->is_login_id_ = is_login_id;
+    instance_->Notify();
   }
 }
 
@@ -1668,6 +1382,44 @@ void Sdk::ResetSuperProperties() {
   super_properties_->SetString("$lib_version", SA_SDK_VERSION);
 }
 
+string Sdk::DistinctID() {
+    return instance_ ? instance_->distinct_id_ :  "";
+}
+
+bool Sdk::IsLoginID() {
+    return instance_ ? instance_->is_login_id_ :  false;
+
+}
+
+bool Sdk::IsEnableLog() {
+    return instance_ ? instance_->consumer_->enable_log_ : false;
+}
+
+string Sdk::StagingFilePath() {
+    return instance_ ? instance_->staging_file_path_ :  "";
+}
+
+void Sdk::Attach(UserAlterationObserver *observer) {
+    if (instance_) {
+        instance_->observers.push_back(observer);
+    }
+}
+
+void Sdk::Detach(UserAlterationObserver *observer) {
+    if (instance_) {
+        instance_->observers.push_back(observer);
+    }
+}
+
+void Sdk::Notify() {
+    if (instance_) {
+        vector<UserAlterationObserver *> list = instance_->observers;
+        for (vector<UserAlterationObserver *>::iterator observer = list.begin(); observer != list.end(); observer++) {
+            (*observer)->Update();
+        }
+    }
+}
+
 Sdk::Sdk(const string &server_url,
          const string &data_file_path,
          int max_staging_record_count,
@@ -1678,6 +1430,7 @@ Sdk::Sdk(const string &server_url,
                                     max_staging_record_count)),
       distinct_id_(distinct_id),
       is_login_id_(is_login_id),
+      staging_file_path_(data_file_path),
       super_properties_(new PropertiesNode) {
   ResetSuperProperties();
 }
