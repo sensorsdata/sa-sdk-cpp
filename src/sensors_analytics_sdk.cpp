@@ -397,12 +397,14 @@ utils::ObjectNode::ValueNode::ToStr(const utils::ObjectNode::ValueNode &node,
 
 void ObjectNode::ValueNode::DumpNumber(double value, string *buffer) {
   std::ostringstream buf;
+  buf.imbue(locale("C"));//设置 buf 的 locale 为 C,即为 unicode 编码
   buf << value;
   *buffer += buf.str();
 }
 
 void ObjectNode::ValueNode::DumpNumber(int64_t value, string *buffer) {
   std::ostringstream buf;
+  buf.imbue(locale("C"));//设置 buf 的 locale 为 C,即为 unicode 编码
   buf << value;
   *buffer += buf.str();
 }
@@ -1355,6 +1357,29 @@ void Sdk::ProfileAppend(const string &property_name, const string &str_value) {
     str_vector.push_back(str_value);
     properties_node.SetList(property_name, str_vector);
     instance_->AddEvent("profile_append",
+                        "",
+                        properties_node,
+                        instance_->distinct_id_,
+                        "");
+  }
+}
+
+void Sdk::ProfileUnset(const string &property_name) {
+  if (instance_) {
+    PropertiesNode properties_node;
+    properties_node.SetString(property_name, "");
+    instance_->AddEvent("profile_unset",
+                        "",
+                        properties_node,
+                        instance_->distinct_id_,
+                        "");
+  }
+}
+
+void Sdk::ProfileDelete() {
+  if (instance_) {
+    PropertiesNode properties_node;
+    instance_->AddEvent("profile_delete",
                         "",
                         properties_node,
                         instance_->distinct_id_,

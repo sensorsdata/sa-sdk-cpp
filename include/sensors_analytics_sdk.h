@@ -28,7 +28,7 @@
 #include <utility>
 #include <vector>
 
-#define SA_SDK_VERSION "1.0.0"
+#define SA_SDK_VERSION "1.0.1"
 #define SA_SDK_NAME "SensorsAnalytics CPP SDK"
 #define SA_SDK_FULL_NAME SA_SDK_NAME " " SA_SDK_VERSION
 
@@ -158,6 +158,10 @@ class Sdk {
 
   static void ProfileAppend(const string &property_name,
                             const string &str_value);
+
+  static void ProfileUnset(const string &property_name);
+
+  static void ProfileDelete();
 
   // 使用追加的方式把队列中数据添加到本地文件中，默认是 false
   static void AppendRecordsToDisk(bool enable);
