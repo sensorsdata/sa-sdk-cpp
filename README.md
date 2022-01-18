@@ -41,6 +41,9 @@ SensorsAnalytics SDK 是国内第一家开源商用版用户行为采集 SDK，�
 | ------ | ------ | ------ |
 | [![《数据驱动：从方法到实践》](https://opensource.sensorsdata.cn/wp-content/uploads/data_driven_book_1.jpg)](https://item.jd.com/12322322.html) | [![《Android 全埋点解决方案》](https://opensource.sensorsdata.cn/wp-content/uploads/Android-全埋点thumbnail_1.png)](https://item.jd.com/12574672.html) | [![《iOS 全埋点解决方案》](https://opensource.sensorsdata.cn/wp-content/uploads/iOS-全埋点thumbnail_1.png)](https://item.jd.com/12867068.html)
 
+## 感谢
+[restclient-cpp](https://github.com/mrtazz/restclient-cpp)
+
 
 ## License
 
