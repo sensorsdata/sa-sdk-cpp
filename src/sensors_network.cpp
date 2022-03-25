@@ -14,6 +14,16 @@
 #include <algorithm>
 #include <functional>
 
+#if defined(__clang__) || defined(__GNUC__)
+    #define SA_CPP_STANDARD __cplusplus
+#elif defined(_MSC_VER)
+    #define SA_CPP_STANDARD _MSVC_LANG
+#endif
+
+#if SA_CPP_STANDARD >= 201103L
+    #define SA_CPP_11 true
+#endif
+
 namespace sensors_analytics {
 
 using namespace std;
@@ -254,15 +264,26 @@ size_t helpers::HeaderCallback(void *data, size_t size, size_t nmemb,
 }
 
 inline string &helpers::TrimLeft(string &s) {  // NOLINT
+#if SA_CPP_11
   s.erase(s.begin(),
-          find_if(s.begin(), s.end(), not1(ptr_fun<int, int>(isspace))));
+    find_if(s.begin(), s.end(), [](int c) {return !std::isspace(c);}));
+#else
+  s.erase(s.begin(),
+    find_if(s.begin(), s.end(), not1(ptr_fun<int, int>(isspace))));
+#endif
   return s;
 }
 
 inline string &helpers::TrimRight(string &s) {  // NOLINT
+#if SA_CPP_11
   s.erase(
-      find_if(s.rbegin(), s.rend(), not1(ptr_fun<int, int>(isspace))).base(),
-      s.end());
+    find_if(s.rbegin(), s.rend(), [](int c) {return !std::isspace(c);}).base(),
+    s.end());
+#else
+  s.erase(
+    find_if(s.rbegin(), s.rend(), not1(ptr_fun<int, int>(isspace))).base(),
+    s.end());
+#endif
   return s;
 }
 
