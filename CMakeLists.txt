@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 2.8.12.2)
 project(sa_sdk_cpp)
 
-add_compile_options(-std=c++98)
-set(CMAKE_CXX_STANDARD 98)
+add_compile_options(-std=c++11)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include_directories(include)
