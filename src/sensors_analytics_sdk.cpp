@@ -191,6 +191,11 @@ void ObjectNode::SetString(const string &property_name, const string &value) {
 }
 
 void ObjectNode::SetString(const string &property_name, const char *value) {
+  if (value == NULL) {
+    std::cerr << "String property '" << property_name
+              << "' value is NULL"<< std::endl;
+    return;
+  }
   SetString(property_name, string(value));
 }
 
@@ -397,6 +402,7 @@ utils::ObjectNode::ValueNode::ToStr(const utils::ObjectNode::ValueNode &node,
 
 void ObjectNode::ValueNode::DumpNumber(double value, string *buffer) {
   std::ostringstream buf;
+  buf.precision(15);//覆盖默认精度
   buf.imbue(locale("C"));//设置 buf 的 locale 为 C,即为 unicode 编码
   buf << value;
   *buffer += buf.str();
@@ -886,29 +892,40 @@ bool Sdk::Init(const std::string &data_file_path,
 }
 
 void Sdk::EnableLog(bool enable) {
-  instance_->consumer_->EnableLog(enable);
+  if (instance_) {
+      instance_->consumer_->EnableLog(enable);
+  }
 }
 
 // 使用追加的方式把队列中数据添加到本地文件中，默认是 false
-  void Sdk::AppendRecordsToDisk(bool enable) {
-      instance_->consumer_->AppendRecordsToDisk(enable);
-  }
+void Sdk::AppendRecordsToDisk(bool enable) {
+    if (instance_) {
+        instance_->consumer_->AppendRecordsToDisk(enable);
+    }
+}
 
 //将队列中的所有数据直接存到本地文件中，并清空队列内容
-  void Sdk::DumpAllRecordsToDisk() {
-      instance_->consumer_->DumpAllRecordsToDisk();
-  }
+void Sdk::DumpAllRecordsToDisk() {
+    if (instance_) {
+        instance_->consumer_->DumpAllRecordsToDisk();
+    }
+}
 
-  void Sdk::SetCookie(const string &cookie, bool encode) {
-      string encodedCookie = encode ? utils::UrlEncode(cookie) : cookie;
-      instance_->consumer_->request_header_cookie = encodedCookie;
-  }
+void Sdk::SetCookie(const string &cookie, bool encode) {
+    if (instance_) {
+        string encodedCookie = encode ? utils::UrlEncode(cookie) : cookie;
+        instance_->consumer_->request_header_cookie = encodedCookie;
+    }
+}
 
-  string Sdk::GetCookie(bool decode) {
-      string cookie = instance_->consumer_->request_header_cookie;
-      string decodeCookie = decode ? utils::UrlDecode(cookie) : cookie;
-      return decodeCookie;
-  }
+string Sdk::GetCookie(bool decode) {
+    if (instance_) {
+        string cookie = instance_->consumer_->request_header_cookie;
+        string decodeCookie = decode ? utils::UrlDecode(cookie) : cookie;
+        return decodeCookie;
+    }
+    return "";
+}
 
 void Sdk::RegisterSuperProperties(const PropertiesNode &properties) {
   if (instance_) {

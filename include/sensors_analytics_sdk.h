@@ -28,7 +28,7 @@
 #include <utility>
 #include <vector>
 
-#define SA_SDK_VERSION "1.0.2"
+#define SA_SDK_VERSION "1.0.3"
 #define SA_SDK_NAME "SensorsAnalytics CPP SDK"
 #define SA_SDK_FULL_NAME SA_SDK_NAME " " SA_SDK_VERSION
 
@@ -226,6 +226,17 @@ namespace utils {
 
 class ObjectNode {
  public:
+  enum ValueNodeType {
+    NUMBER,
+    INT,
+    STRING,
+    LIST,
+    DATETIME,
+    BOOL,
+    OBJECT,
+    UNKNOWN,
+  };
+
   void SetNumber(const string &property_name, int32_t value);
 
   void SetNumber(const string &property_name, int64_t value);
@@ -238,7 +249,7 @@ class ObjectNode {
 
   void SetBool(const string &property_name, bool value);
 
-  void SetList(const string &property_name, const std::vector<string> &value);
+  virtual void SetList(const string &property_name, const std::vector<string> &value);
 
   void SetDateTime(const string &property_name, time_t seconds,
                    int milliseconds);
@@ -251,13 +262,13 @@ class ObjectNode {
   virtual void SetObject(const string &property_name, const ObjectNode &value);
 
   static string ToJson(const ObjectNode &node);
+    
+  class ValueNode;
+    
+  std::map<string, ValueNode> properties_map_;
 
  protected:
   ObjectNode();
-
-  class ValueNode;
-
-  std::map<string, ValueNode> properties_map_;
 
  private:
   static void DumpNode(const ObjectNode &node, string *buffer);
@@ -265,17 +276,6 @@ class ObjectNode {
   void MergeFrom(const ObjectNode &another_node);
 
   friend class ::sensors_analytics::Sdk;
-
-  enum ValueNodeType {
-    NUMBER,
-    INT,
-    STRING,
-    LIST,
-    DATETIME,
-    BOOL,
-    OBJECT,
-    UNKNOWN,
-  };
 };
 
 class ObjectNode::ValueNode {
@@ -297,6 +297,8 @@ class ObjectNode::ValueNode {
   ValueNode(time_t seconds, int milliseconds);
 
   static void ToStr(const ValueNode &node, string *buffer);
+    
+  ValueNodeType node_type_;
 
  private:
   static void DumpString(const string &value, string *buffer);
@@ -311,8 +313,6 @@ class ObjectNode::ValueNode {
   static void DumpNumber(int64_t value, string *buffer);
 
   friend class ::sensors_analytics::Sdk;
-
-  ValueNodeType node_type_;
 
   union UnionValue {
     double number_value;
