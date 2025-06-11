@@ -28,7 +28,7 @@
 #include <utility>
 #include <vector>
 
-#define SA_SDK_VERSION "1.0.3"
+#define SA_SDK_VERSION "1.1.1"
 #define SA_SDK_NAME "SensorsAnalytics CPP SDK"
 #define SA_SDK_FULL_NAME SA_SDK_NAME " " SA_SDK_VERSION
 
